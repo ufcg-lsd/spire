@@ -1,0 +1,40 @@
+syntax = "proto3";
+package spire.agent.svidpublisher;
+option go_package = "github.com/spiffe/spire/proto/spire/agent/svidstore";
+
+import "spire/common/common.proto";
+import "spire/common/plugin/plugin.proto";
+
+service SVIDStore {
+    // Puts an X509-SVID in a configured secrets store
+    rpc PutX509SVID(PutX509SVIDRequest) returns (PutX509SVIDResponse);
+
+    // Applies the plugin configuration and returns configuration errors
+    rpc Configure(spire.common.plugin.ConfigureRequest) returns (spire.common.plugin.ConfigureResponse);
+
+    // Returns the version and related metadata of the plugin 
+    rpc GetPluginInfo(spire.common.plugin.GetPluginInfoRequest) returns (spire.common.plugin.GetPluginInfoResponse);
+}
+
+message PutX509SVIDRequest {
+    X509SVID svid = 1;
+
+    repeated spire.common.Selector selectors = 2;
+
+    map<string, bytes> federated_bundles = 3;
+}
+
+message PutX509SVIDResponse {
+}
+
+message X509SVID {
+    string spiffe_id = 1;
+
+    bytes x509_svid = 2;
+
+    bytes x509_svid_key = 3;
+
+    bytes bundle = 4;
+}
+
+ 

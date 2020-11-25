@@ -149,6 +149,7 @@ serviceprotos := \
 	proto/private/test/catalogtest/test.proto \
 	proto/spire/agent/keymanager/keymanager.proto \
 	proto/spire/agent/nodeattestor/nodeattestor.proto \
+	proto/spire/agent/svidstore/svidstore.proto \
 	proto/spire/agent/workloadattestor/workloadattestor.proto \
 	proto/spire/api/node/node.proto \
 	proto/spire/api/registration/registration.proto \
@@ -187,6 +188,7 @@ plugingen_plugins = \
 	proto/spire/server/keymanager/keymanager.proto,pkg/server/plugin/keymanager,KeyManager \
 	proto/spire/agent/nodeattestor/nodeattestor.proto,pkg/agent/plugin/nodeattestor,NodeAttestor \
 	proto/spire/agent/workloadattestor/workloadattestor.proto,pkg/agent/plugin/workloadattestor,WorkloadAttestor \
+	proto/spire/agent/svidstore/svidstore.proto,pkg/agent/plugin/svidstore,SVIDStore \
 	proto/spire/agent/keymanager/keymanager.proto,pkg/agent/plugin/keymanager,KeyManager \
 	proto/private/test/catalogtest/test.proto,proto/private/test/catalogtest,Plugin,shared \
 

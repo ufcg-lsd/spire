@@ -379,7 +379,7 @@ func TestSubcriberNotificationsOnSelectorChanges(t *testing.T) {
 
 func newTestCache() *Cache {
 	log, _ := test.NewNullLogger()
-	return New(log, "spiffe://domain.test", bundleV1, telemetry.Blackhole{})
+	return New(log, "spiffe://domain.test", bundleV1, telemetry.Blackhole{}, nil)
 }
 
 func TestSubcriberNotifiedWhenEntryDropped(t *testing.T) {

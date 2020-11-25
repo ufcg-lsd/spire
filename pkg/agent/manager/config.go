@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/spire/pkg/agent/catalog"
 	"github.com/spiffe/spire/pkg/agent/manager/cache"
+	"github.com/spiffe/spire/pkg/agent/manager/pipe"
 	"github.com/spiffe/spire/pkg/agent/svid"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 )
@@ -33,6 +34,9 @@ type Config struct {
 
 	// Clk is the clock the manager will use to get time
 	Clk clock.Clock
+
+	// Buffered pipe used to push all 'storable' SVIDs
+	PipeIn pipe.In
 }
 
 // New creates a cache manager based on c's configuration
@@ -53,7 +57,7 @@ func newManager(c *Config) *manager {
 		c.Clk = clock.New()
 	}
 
-	cache := cache.New(c.Log.WithField(telemetry.SubsystemName, telemetry.CacheManager), c.TrustDomain.String(), c.Bundle, c.Metrics)
+	cache := cache.New(c.Log.WithField(telemetry.SubsystemName, telemetry.CacheManager), c.TrustDomain.String(), c.Bundle, c.Metrics, c.PipeIn)
 
 	rotCfg := &svid.RotatorConfig{
 		Catalog:      c.Catalog,

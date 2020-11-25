@@ -16,6 +16,9 @@ import (
 	na_k8s_sat "github.com/spiffe/spire/pkg/agent/plugin/nodeattestor/k8s/sat"
 	na_sshpop "github.com/spiffe/spire/pkg/agent/plugin/nodeattestor/sshpop"
 	na_x509pop "github.com/spiffe/spire/pkg/agent/plugin/nodeattestor/x509pop"
+	"github.com/spiffe/spire/pkg/agent/plugin/svidstore"
+	ss_aws "github.com/spiffe/spire/pkg/agent/plugin/svidstore/aws"
+	ss_gcloud "github.com/spiffe/spire/pkg/agent/plugin/svidstore/gcloud"
 	"github.com/spiffe/spire/pkg/agent/plugin/workloadattestor"
 	wa_docker "github.com/spiffe/spire/pkg/agent/plugin/workloadattestor/docker"
 	wa_k8s "github.com/spiffe/spire/pkg/agent/plugin/workloadattestor/k8s"
@@ -29,6 +32,7 @@ type Catalog interface {
 	GetKeyManager() KeyManager
 	GetNodeAttestor() NodeAttestor
 	GetWorkloadAttestors() []WorkloadAttestor
+	GetSVIDStores() []SVIDStores
 }
 
 type GlobalConfig = catalog.GlobalConfig
@@ -39,6 +43,7 @@ func KnownPlugins() []catalog.PluginClient {
 	return []catalog.PluginClient{
 		keymanager.PluginClient,
 		nodeattestor.PluginClient,
+		svidstore.PluginClient,
 		workloadattestor.PluginClient,
 	}
 }
@@ -59,6 +64,8 @@ func BuiltIns() []catalog.Plugin {
 		na_azure_msi.BuiltIn(),
 		na_k8s_sat.BuiltIn(),
 		na_k8s_psat.BuiltIn(),
+		ss_aws.BuiltIn(),
+		ss_gcloud.BuiltIn(),
 		wa_k8s.BuiltIn(),
 		wa_unix.BuiltIn(),
 		wa_docker.BuiltIn(),
@@ -74,6 +81,11 @@ type NodeAttestor struct {
 	nodeattestor.NodeAttestor
 }
 
+type SVIDStores struct {
+	catalog.PluginInfo
+	svidstore.SVIDStore
+}
+
 type WorkloadAttestor struct {
 	catalog.PluginInfo
 	workloadattestor.WorkloadAttestor
@@ -82,6 +94,7 @@ type WorkloadAttestor struct {
 type Plugins struct {
 	KeyManager        KeyManager
 	NodeAttestor      NodeAttestor
+	SVIDStores        []SVIDStores
 	WorkloadAttestors []WorkloadAttestor `catalog:"min=1"`
 }
 
@@ -93,6 +106,10 @@ func (p *Plugins) GetKeyManager() KeyManager {
 
 func (p *Plugins) GetNodeAttestor() NodeAttestor {
 	return p.NodeAttestor
+}
+
+func (p *Plugins) GetSVIDStores() []SVIDStores {
+	return p.SVIDStores
 }
 
 func (p *Plugins) GetWorkloadAttestors() []WorkloadAttestor {

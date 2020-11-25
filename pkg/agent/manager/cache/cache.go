@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/spiffe/spire/pkg/agent/manager/pipe"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/proto/spire/common"
@@ -114,6 +115,9 @@ type Cache struct {
 
 	// bundles holds the trust bundles, keyed by trust domain id (i.e. "spiffe://domain.test")
 	bundles map[string]*bundleutil.Bundle
+
+	// buffered pipe for 'storable' SVIDs
+	pipeIn pipe.In
 }
 
 // StaleEntry holds stale entries with SVIDs expiration time
@@ -124,7 +128,7 @@ type StaleEntry struct {
 	ExpiresAt time.Time
 }
 
-func New(log logrus.FieldLogger, trustDomainID string, bundle *Bundle, metrics telemetry.Metrics) *Cache {
+func New(log logrus.FieldLogger, trustDomainID string, bundle *Bundle, metrics telemetry.Metrics, pipeIn pipe.In) *Cache {
 	return &Cache{
 		BundleCache:  NewBundleCache(trustDomainID, bundle),
 		JWTSVIDCache: NewJWTSVIDCache(),
@@ -138,6 +142,7 @@ func New(log logrus.FieldLogger, trustDomainID string, bundle *Bundle, metrics t
 		bundles: map[string]*bundleutil.Bundle{
 			trustDomainID: bundle,
 		},
+		pipeIn: pipeIn,
 	}
 }
 
@@ -392,6 +397,31 @@ func (c *Cache) UpdateSVIDs(update *UpdateSVIDs) {
 			telemetry.SPIFFEID: record.entry.SpiffeId,
 		})
 		log.Debug("SVID updated")
+
+		// Verify if pipe exists and if current entry is storable
+		if c.pipeIn != nil && c.pipeIn.IsStorable(record.entry.Selectors) {
+			update := &pipe.SVIDUpdate{
+				Entry:            record.entry,
+				SVID:             record.svid.Chain,
+				PrivateKey:       record.svid.PrivateKey,
+				Bundle:           c.bundles[c.trustDomainID],
+				FederatedBundles: make(map[string]*bundleutil.Bundle),
+			}
+
+			for _, federatesWith := range record.entry.FederatesWith {
+				if federatedBundle := c.bundles[federatesWith]; federatedBundle != nil {
+					update.FederatedBundles[federatesWith] = federatedBundle
+				} else {
+					c.log.WithFields(logrus.Fields{
+						telemetry.RegistrationID:  record.entry.EntryId,
+						telemetry.SPIFFEID:        record.entry.SpiffeId,
+						telemetry.FederatedBundle: federatesWith,
+					}).Warn("Federated bundle contents missing")
+				}
+			}
+
+			c.pipeIn.Push(update)
+		}
 
 		// Registration entry is updated, remove it from stale map
 		delete(c.staleEntries, entryID)

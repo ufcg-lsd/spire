@@ -5,6 +5,7 @@ go 1.15
 replace github.com/spiffe/spire/proto/spire => ./proto/spire
 
 require (
+	cloud.google.com/go v0.56.0
 	cloud.google.com/go/storage v1.6.0
 	github.com/Azure/azure-sdk-for-go v44.0.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.0
