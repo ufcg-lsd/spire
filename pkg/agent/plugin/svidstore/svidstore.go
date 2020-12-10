@@ -17,6 +17,7 @@ type PutX509SVIDResponse = svidstore.PutX509SVIDResponse                   //nol
 type SVIDStoreClient = svidstore.SVIDStoreClient                           //nolint: golint
 type SVIDStoreServer = svidstore.SVIDStoreServer                           //nolint: golint
 type UnimplementedSVIDStoreServer = svidstore.UnimplementedSVIDStoreServer //nolint: golint
+type UnsafeSVIDStoreServer = svidstore.UnsafeSVIDStoreServer               //nolint: golint
 type X509SVID = svidstore.X509SVID                                         //nolint: golint
 
 const (
@@ -68,7 +69,7 @@ func (pluginClient) PluginType() string {
 	return Type
 }
 
-func (pluginClient) NewPluginClient(conn *grpc.ClientConn) interface{} {
+func (pluginClient) NewPluginClient(conn grpc.ClientConnInterface) interface{} {
 	return AdaptPluginClient(svidstore.NewSVIDStoreClient(conn))
 }
 

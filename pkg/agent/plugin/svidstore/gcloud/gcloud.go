@@ -38,6 +38,8 @@ type Config struct {
 }
 
 type SecretsManagerPlugin struct {
+	svidstore.UnsafeSVIDStoreServer
+
 	log    hclog.Logger
 	config *Config
 	mtx    sync.RWMutex

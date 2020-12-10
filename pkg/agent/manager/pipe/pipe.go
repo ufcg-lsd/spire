@@ -1,7 +1,7 @@
 package pipe
 
 import (
-	"crypto/ecdsa"
+	"crypto"
 	"crypto/x509"
 	"sync"
 
@@ -13,7 +13,7 @@ import (
 type SVIDUpdate struct {
 	Entry      *common.RegistrationEntry
 	SVID       []*x509.Certificate
-	PrivateKey *ecdsa.PrivateKey
+	PrivateKey crypto.Signer
 
 	Bundle           *bundleutil.Bundle
 	FederatedBundles map[string]*bundleutil.Bundle

@@ -3,10 +3,10 @@ package svidstore
 import (
 	"strings"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/spiffe/go-spiffe/v2/proto/spiffe/workload"
 	"github.com/spiffe/spire/proto/spire/agent/svidstore"
 	"github.com/spiffe/spire/proto/spire/common"
+	"google.golang.org/protobuf/proto"
 )
 
 // TODO: refactor it.
