@@ -9,17 +9,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// TODO: refactor it.
-// It expects selectors like:
-//
-// - aws:name:somename
-// - aws:arn:asd123
-// - aws:kmsid:asd123
-// - gcloud:name:somename
-func ParseSelectors(selectors []*common.Selector, typ string) map[string]string {
+// ParseSelectors parses selectors for SVIDStore plugins
+func ParseSelectors(selectors []*common.Selector) map[string]string {
 	data := make(map[string]string)
 	for _, s := range selectors {
-		if s.Type != typ {
+		if s.Type != strings.ToLower(Type) {
 			continue
 		}
 

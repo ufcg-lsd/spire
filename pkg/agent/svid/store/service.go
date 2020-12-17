@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/spire/pkg/agent/catalog"
@@ -27,6 +28,10 @@ type Config struct {
 	PipeOut pipe.Out
 	Catalog catalog.Catalog
 }
+
+const (
+	typeSelector = "type"
+)
 
 func New(c Config) Service {
 	return &store{
@@ -95,7 +100,7 @@ func (p *store) run(ctx context.Context) error {
 			}
 
 			if _, err := svidStore.PutX509SVID(ctx, req); err != nil {
-				log.Errorf("Failed to put X509SVID to %q: %v", pluginName, err)
+				log.Errorf("Failed to put X509-SVID to %q: %v", pluginName, err)
 			}
 		case <-ctx.Done():
 			return nil
@@ -105,12 +110,15 @@ func (p *store) run(ctx context.Context) error {
 
 func getPluginName(selectors []*common.Selector) (string, error) {
 	for _, selector := range selectors {
-		// selector "store:$PLUGIN_NAME" is expected
-		if selector.Type == "store" {
-			return selector.Value, nil
+		// selector "svidstore:type:$PLUGIN_NAME" is expected
+		if selector.Type == strings.ToLower(svidstore.Type) {
+			splitted := strings.SplitN(selector.Value, ":", 2)
+			if len(splitted) > 1 && splitted[0] == typeSelector {
+				return splitted[1], nil
+			}
 		}
 	}
-	return "", errors.New("plugin name could not be found")
+	return "", errors.New("store information not found in selectors")
 }
 
 // parseUpdate parses an SVID Update into a *svidstore.PutX509SVIDRequest request

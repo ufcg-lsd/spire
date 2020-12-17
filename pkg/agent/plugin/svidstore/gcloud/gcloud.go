@@ -87,7 +87,7 @@ func (p *SecretsManagerPlugin) PutX509SVID(ctx context.Context, req *svidstore.P
 		return nil, status.Errorf(codes.Internal, "failed to create secretmanager client: %v", err)
 	}
 
-	data := svidstore.ParseSelectors(req.Selectors, "gcloud")
+	data := svidstore.ParseSelectors(req.Selectors)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}

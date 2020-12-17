@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/spiffe/spire/pkg/agent/endpoints"
 	"github.com/spiffe/spire/pkg/agent/manager"
 	"github.com/spiffe/spire/pkg/agent/manager/pipe"
+	"github.com/spiffe/spire/pkg/agent/plugin/svidstore"
 	"github.com/spiffe/spire/pkg/agent/svid/store"
 	common_catalog "github.com/spiffe/spire/pkg/common/catalog"
 	"github.com/spiffe/spire/pkg/common/health"
@@ -242,7 +244,7 @@ func (a *Agent) newManager(ctx context.Context, cat catalog.Catalog, metrics tel
 func (a *Agent) newStore(c catalog.Catalog, pipeOut pipe.Out) store.Service {
 	config := store.Config{
 		Catalog: c,
-		Log:     a.c.Log.WithField(telemetry.SubsystemName, "store"),
+		Log:     a.c.Log.WithField(telemetry.SubsystemName, strings.ToLower(svidstore.Type)),
 		PipeOut: pipeOut,
 	}
 

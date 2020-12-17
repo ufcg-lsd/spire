@@ -3,8 +3,10 @@ package pipe
 import (
 	"crypto"
 	"crypto/x509"
+	"strings"
 	"sync"
 
+	"github.com/spiffe/spire/pkg/agent/plugin/svidstore"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
 	"github.com/spiffe/spire/proto/spire/common"
 )
@@ -72,7 +74,7 @@ func newPipeIn(wg *sync.WaitGroup, in chan *SVIDUpdate) *pipeIn {
 
 func (p *pipeIn) IsStorable(selectors []*common.Selector) bool {
 	for _, s := range selectors {
-		if s.Type == "store" {
+		if s.Type == strings.ToLower(svidstore.Type) {
 			return true
 		}
 	}
