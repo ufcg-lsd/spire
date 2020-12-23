@@ -132,8 +132,8 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// If an SVID store is configured, create store and add it to tasks
 	if hasStores {
-		publisher := a.newStore(cat, pipeOut)
-		tasks = append(tasks, publisher.Run)
+		store := a.newStore(cat, pipeOut)
+		tasks = append(tasks, store.Run)
 	}
 
 	err = util.RunTasks(ctx, tasks...)

@@ -36,7 +36,7 @@ func NewSVIDStoreClient(cc grpc.ClientConnInterface) SVIDStoreClient {
 
 func (c *sVIDStoreClient) PutX509SVID(ctx context.Context, in *PutX509SVIDRequest, opts ...grpc.CallOption) (*PutX509SVIDResponse, error) {
 	out := new(PutX509SVIDResponse)
-	err := c.cc.Invoke(ctx, "/spire.agent.svidpublisher.SVIDStore/PutX509SVID", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/spire.agent.svidstore.SVIDStore/PutX509SVID", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func (c *sVIDStoreClient) PutX509SVID(ctx context.Context, in *PutX509SVIDReques
 
 func (c *sVIDStoreClient) Configure(ctx context.Context, in *plugin.ConfigureRequest, opts ...grpc.CallOption) (*plugin.ConfigureResponse, error) {
 	out := new(plugin.ConfigureResponse)
-	err := c.cc.Invoke(ctx, "/spire.agent.svidpublisher.SVIDStore/Configure", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/spire.agent.svidstore.SVIDStore/Configure", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (c *sVIDStoreClient) Configure(ctx context.Context, in *plugin.ConfigureReq
 
 func (c *sVIDStoreClient) GetPluginInfo(ctx context.Context, in *plugin.GetPluginInfoRequest, opts ...grpc.CallOption) (*plugin.GetPluginInfoResponse, error) {
 	out := new(plugin.GetPluginInfoResponse)
-	err := c.cc.Invoke(ctx, "/spire.agent.svidpublisher.SVIDStore/GetPluginInfo", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/spire.agent.svidstore.SVIDStore/GetPluginInfo", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func _SVIDStore_PutX509SVID_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/spire.agent.svidpublisher.SVIDStore/PutX509SVID",
+		FullMethod: "/spire.agent.svidstore.SVIDStore/PutX509SVID",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SVIDStoreServer).PutX509SVID(ctx, req.(*PutX509SVIDRequest))
@@ -128,7 +128,7 @@ func _SVIDStore_Configure_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/spire.agent.svidpublisher.SVIDStore/Configure",
+		FullMethod: "/spire.agent.svidstore.SVIDStore/Configure",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SVIDStoreServer).Configure(ctx, req.(*plugin.ConfigureRequest))
@@ -146,7 +146,7 @@ func _SVIDStore_GetPluginInfo_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/spire.agent.svidpublisher.SVIDStore/GetPluginInfo",
+		FullMethod: "/spire.agent.svidstore.SVIDStore/GetPluginInfo",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SVIDStoreServer).GetPluginInfo(ctx, req.(*plugin.GetPluginInfoRequest))
@@ -155,7 +155,7 @@ func _SVIDStore_GetPluginInfo_Handler(srv interface{}, ctx context.Context, dec 
 }
 
 var _SVIDStore_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "spire.agent.svidpublisher.SVIDStore",
+	ServiceName: "spire.agent.svidstore.SVIDStore",
 	HandlerType: (*SVIDStoreServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

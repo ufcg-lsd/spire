@@ -1,5 +1,5 @@
 syntax = "proto3";
-package spire.agent.svidpublisher;
+package spire.agent.svidstore;
 option go_package = "github.com/spiffe/spire/proto/spire/agent/svidstore";
 
 import "spire/common/common.proto";

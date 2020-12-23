@@ -69,7 +69,7 @@ func (p *store) run(ctx context.Context) error {
 	}
 
 	// This is a defensive check. This code is only reachable when there is
-	// at least one SVID Publisher plugin
+	// at least one SVID Store plugin
 	if len(svidStores) == 0 {
 		return errors.New("no SVID store provided")
 	}
