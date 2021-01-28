@@ -19,6 +19,7 @@ import (
 	"github.com/spiffe/spire/pkg/agent/plugin/svidstore"
 	ss_aws "github.com/spiffe/spire/pkg/agent/plugin/svidstore/aws"
 	ss_gcloud "github.com/spiffe/spire/pkg/agent/plugin/svidstore/gcloud"
+	ss_scone "github.com/spiffe/spire/pkg/agent/plugin/svidstore/scone"
 	"github.com/spiffe/spire/pkg/agent/plugin/workloadattestor"
 	wa_docker "github.com/spiffe/spire/pkg/agent/plugin/workloadattestor/docker"
 	wa_k8s "github.com/spiffe/spire/pkg/agent/plugin/workloadattestor/k8s"
@@ -66,6 +67,7 @@ func BuiltIns() []catalog.Plugin {
 		na_k8s_psat.BuiltIn(),
 		ss_aws.BuiltIn(),
 		ss_gcloud.BuiltIn(),
+		ss_scone.BuiltIn(),
 		wa_k8s.BuiltIn(),
 		wa_unix.BuiltIn(),
 		wa_docker.BuiltIn(),
