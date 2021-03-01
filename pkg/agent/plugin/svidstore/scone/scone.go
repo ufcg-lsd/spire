@@ -27,17 +27,30 @@ import (
 )
 
 const (
-	pluginName                  = "scone_cas_secretsmanager"
-	casSessionNameSelecType     = "cas_session_name"
-	casSessionHashSelecType     = "cas_session_hash"
-	casSessionEndpoint          = "/session"
-	noPredHashMsg               = "No predecessor hash specified albeit session alias used already"
-	predNotNeededMsg            = "Predecessor hash specified albeit session alias unused"
-	certificatePemType          = "CERTIFICATE"
-	privateKeyPemType           = "PRIVATE KEY"
-	sessionNameSVIDPrefix       = "spire-svid-"
-	sessionNameCA               = "spire-ca"
-	sessionNameFederatedBundles = "spire-federated-bundles"
+	pluginName                     = "scone_cas_secretsmanager"
+	casSessionNameSelecType        = "cas_session_name"
+	casSessionHashSelecType        = "cas_session_hash"
+	casSessionEndpoint             = "/session"
+	noPredHashMsg                  = "No predecessor hash specified albeit session alias used already"
+	predNotNeededMsg               = "Predecessor hash specified albeit session alias unused"
+	certificatePemType             = "CERTIFICATE"
+	privateKeyPemType              = "PRIVATE KEY"
+	predecessorPlaceholder         = "${predecessor}"
+	svidPlaceholder                = "${svid}"
+	svidKeyPlaceholder             = "${svid-key}"
+	sessionNameSelectorPlaceholder = "${session-name-selector}"
+	sessionHashSelectorPlaceholder = "${session-hash-selector}"
+	caTrustBundlePlaceholder       = "${trust-bundle-ca}"
+	nameYAMLKey                    = "name:"
+)
+
+var (
+	svidSessionTemplate             string
+	caBundleSessionTemplate         string
+	federatedBundlesSessionTemplate string
+	sessionNameSVIDPrefix           string
+	sessionNameCA                   string
+	sessionNameFederatedBundles     string
 )
 
 type sconeWorkloadInfo struct {
@@ -62,10 +75,13 @@ func New() *SecretsManagerPlugin {
 }
 
 type Config struct {
-	CasAddress     string `hcl:"cas_address"`
-	ClientCertDir  string `hcl:"cas_client_certificate"`
-	ClientKeyDir   string `hcl:"cas_client_key"`
-	PredecessorDir string `hcl:"cas_predecessor_dir"`
+	CasAddress                          string `hcl:"cas_address"`
+	ClientCertDir                       string `hcl:"cas_client_certificate"`
+	ClientKeyDir                        string `hcl:"cas_client_key"`
+	PredecessorDir                      string `hcl:"cas_predecessor_dir"`
+	SVIDSessionTemplateFile             string `hcl:"svid_session_template_file"`
+	CABundleSessionTemplateFile         string `hcl:"ca_bundle_session_template_file"`
+	FederatedBundlesSessionTemplateFile string `hcl:"federated_bundles_session_template_file"`
 }
 
 type SecretsManagerPlugin struct {
@@ -87,8 +103,42 @@ func (p *SecretsManagerPlugin) SetLogger(log hclog.Logger) {
 func (p *SecretsManagerPlugin) Configure(ctx context.Context, req *spi.ConfigureRequest) (*spi.ConfigureResponse, error) {
 	// Parse HCL config payload into config struct
 	config := &Config{}
-	if err := hcl.Decode(config, req.Configuration); err != nil {
+	var err error
+	if err = hcl.Decode(config, req.Configuration); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "unable to decode configuration: %v", err)
+	}
+
+	caSessionTemplateBytes, err := ioutil.ReadFile(config.CABundleSessionTemplateFile)
+	if err != nil {
+		return &spi.ConfigureResponse{}, errors.New("error in ca_bundle_session_template_file config. " + err.Error())
+	}
+
+	federatedBundlesSessionTemplateBytes, err := ioutil.ReadFile(config.FederatedBundlesSessionTemplateFile)
+	if err != nil {
+		return &spi.ConfigureResponse{}, errors.New("error in federated_bundles_session_template_file config. " + err.Error())
+	}
+
+	svidSessionTemplateBytes, nil := ioutil.ReadFile(config.SVIDSessionTemplateFile)
+	if err != nil {
+		return &spi.ConfigureResponse{}, errors.New("error in svid_session_template_file config. " + err.Error())
+	}
+
+	caBundleSessionTemplate = string(caSessionTemplateBytes)
+	sessionNameCA, err = getSessionNameFromTemplate(caBundleSessionTemplate)
+	if err != nil {
+		return &spi.ConfigureResponse{}, err
+	}
+
+	federatedBundlesSessionTemplate = string(federatedBundlesSessionTemplateBytes)
+	sessionNameFederatedBundles, err = getSessionNameFromTemplate(federatedBundlesSessionTemplate)
+	if err != nil {
+		return &spi.ConfigureResponse{}, err
+	}
+
+	svidSessionTemplate = string(svidSessionTemplateBytes)
+	sessionNameSVIDPrefix, err = getSVIDSessionNameFromTemplate(svidSessionTemplate)
+	if err != nil {
+		return &spi.ConfigureResponse{}, err
 	}
 
 	p.mtx.Lock()
@@ -101,6 +151,28 @@ func (p *SecretsManagerPlugin) Configure(ctx context.Context, req *spi.Configure
 // GetPluginInfo returns the version and other metadata of the plugin.
 func (*SecretsManagerPlugin) GetPluginInfo(context.Context, *spi.GetPluginInfoRequest) (*spi.GetPluginInfoResponse, error) {
 	return &spi.GetPluginInfoResponse{}, nil
+}
+
+func getSVIDSessionNameFromTemplate(template string) (string, error) {
+	haystack := strings.Split(template, "\n")
+	for _, item := range haystack {
+		if strings.HasPrefix(item, nameYAMLKey) {
+			nameWithPlaceholder := strings.Split(item, nameYAMLKey)[1]
+			return strings.Trim(
+				strings.Split(nameWithPlaceholder, sessionNameSelectorPlaceholder)[0], " "), nil
+		}
+	}
+	return "", errors.New("cannot find name prefix in template for SVID session")
+}
+
+func getSessionNameFromTemplate(template string) (string, error) {
+	haystack := strings.Split(template, "\n")
+	for _, item := range haystack {
+		if strings.HasPrefix(item, nameYAMLKey) {
+			return strings.Trim(strings.Split(item, nameYAMLKey)[1], " "), nil
+		}
+	}
+	return "", errors.New("cannot find session name in template")
 }
 
 func (p *SecretsManagerPlugin) extractWorkloadInfoFromSelectors(selectors []*common.Selector) (*sconeWorkloadInfo, error) {
@@ -132,97 +204,32 @@ func (p *SecretsManagerPlugin) extractWorkloadInfoFromSelectors(selectors []*com
 
 // generateSVIDSessionText is an auxiliar func to gerenate the SCONE CAS session expected text format
 func (p *SecretsManagerPlugin) generateSVIDSessionText(sconeWorkloadInfo *sconeWorkloadInfo, svid string, privateKey string) string {
-	var predecessorLine string
-	predecessor, err := p.readPredecessor(sessionNameSVIDPrefix + sconeWorkloadInfo.CasSessionName)
-	if err != nil {
-		predecessorLine = ""
-	} else {
-		predecessorLine = "predecessor: " + predecessor
-	}
+	session := strings.ReplaceAll(svidSessionTemplate, predecessorPlaceholder,
+		p.readPredecessor(sessionNameSVIDPrefix+sconeWorkloadInfo.CasSessionName))
+	session = strings.ReplaceAll(session, svidPlaceholder, pemToSconeInjectionFile(svid))
+	session = strings.ReplaceAll(session, svidKeyPlaceholder, pemToSconeInjectionFile(privateKey))
+	session = strings.ReplaceAll(session, sessionNameSelectorPlaceholder, sconeWorkloadInfo.CasSessionName)
+	session = strings.ReplaceAll(session, sessionHashSelectorPlaceholder, sconeWorkloadInfo.CasSessionHash)
 
-	sessionTemplateP1 := "name: " + sessionNameSVIDPrefix + sconeWorkloadInfo.CasSessionName + "\nversion: \"0.3\"\n"
-	sessionTemplateP2 := `
-secrets:
-  - name: svid
-    kind: x509
-    value: |
-        `
-	sessionTemplateP3 := `
-    export:
-        session: `
-	sessionTemplateP4 := `
-        session_hash: `
-	sessionTemplateP5 := `
-    private_key: svid_key
-  - name: svid_key
-    kind: private-key
-    export:
-        session: `
-	sessionTemplateP6 := `
-        session_hash: `
-	sessionTemplateP7 := `
-    value: |
-        `
-	sessionTemplate := sessionTemplateP1 +
-		predecessorLine +
-		sessionTemplateP2 +
-		pemToSconeInjectionFile(svid) +
-		sessionTemplateP3 +
-		sconeWorkloadInfo.CasSessionName +
-		sessionTemplateP4 +
-		sconeWorkloadInfo.CasSessionHash +
-		sessionTemplateP5 +
-		sconeWorkloadInfo.CasSessionName +
-		sessionTemplateP6 +
-		sconeWorkloadInfo.CasSessionHash +
-		sessionTemplateP7 +
-		pemToSconeInjectionFile(privateKey)
-
-	return sessionTemplate
+	return session
 }
 
 func (p *SecretsManagerPlugin) generateCASessionText(svidCa string) string {
-	var predecessorLine string
-	predecessor, err := p.readPredecessor(sessionNameCA)
-	if err != nil {
-		predecessorLine = ""
-	} else {
-		predecessorLine = "predecessor: " + predecessor
-	}
-
-	sessionTemplateP0 := "name: " + sessionNameCA + `
-version: "0.3"
-`
-	sessionTemplateP1 := `
-secrets:
-  - name: spire-ca
-    kind: x509-ca
-    export_public: true
-    value: |
-        `
-	return sessionTemplateP0 + predecessorLine + sessionTemplateP1 + pemToSconeInjectionFile(svidCa)
+	session := strings.ReplaceAll(caBundleSessionTemplate, predecessorPlaceholder,
+		p.readPredecessor(sessionNameCA))
+	session = strings.ReplaceAll(session,
+		caTrustBundlePlaceholder,
+		pemToSconeInjectionFile(svidCa))
+	return session
 }
 
 func (p *SecretsManagerPlugin) generateFederatedBundlesSessionText(federatedBundles string) string {
-	var predecessorLine string
-	predecessor, err := p.readPredecessor(sessionNameFederatedBundles)
-	if err != nil {
-		predecessorLine = ""
-	} else {
-		predecessorLine = "predecessor: " + predecessor
-	}
-
-	sessionTemplateP0 := "name: " + sessionNameFederatedBundles + `
-version: "0.3"
-`
-	sessionTemplateP1 := `
-secrets:
-  - name: spire-federated-bundles
-    kind: x509-ca
-    export_public: true
-    value: |
-        `
-	return sessionTemplateP0 + predecessorLine + sessionTemplateP1 + pemToSconeInjectionFile(federatedBundles)
+	session := strings.ReplaceAll(federatedBundlesSessionTemplate, predecessorPlaceholder,
+		p.readPredecessor(sessionNameFederatedBundles))
+	session = strings.ReplaceAll(session,
+		caTrustBundlePlaceholder,
+		pemToSconeInjectionFile(federatedBundles))
+	return session
 }
 
 func (p *SecretsManagerPlugin) doPostRequest(session string) (*http.Response, error) {
@@ -455,10 +462,11 @@ func (p *SecretsManagerPlugin) writePredecessor(sessionName string, predecessor 
 	return err
 }
 
-func (p *SecretsManagerPlugin) readPredecessor(sessionName string) (string, error) {
+func (p *SecretsManagerPlugin) readPredecessor(sessionName string) string {
 	predecessor, err := ioutil.ReadFile(p.config.PredecessorDir + "/" + sessionName)
 	if err != nil {
 		p.log.Warn("cannot read predecessor for session", err)
+		return "~"
 	}
-	return string(predecessor), nil
+	return string(predecessor)
 }
