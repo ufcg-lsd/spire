@@ -42,6 +42,7 @@ const (
 	sessionHashSelectorPlaceholder = "${session-hash-selector}"
 	caTrustBundlePlaceholder       = "${trust-bundle-ca}"
 	nameYAMLKey                    = "name:"
+	attestCASEndpointV1            = "/v1/attest"
 )
 
 var (
@@ -82,6 +83,7 @@ type Config struct {
 	SVIDSessionTemplateFile             string `hcl:"svid_session_template_file"`
 	CABundleSessionTemplateFile         string `hcl:"ca_bundle_session_template_file"`
 	FederatedBundlesSessionTemplateFile string `hcl:"federated_bundles_session_template_file"`
+	CASTrustAnchorCertificate           string `hcl:"trust_anchor_certificate"`
 }
 
 type SecretsManagerPlugin struct {
@@ -105,7 +107,7 @@ func (p *SecretsManagerPlugin) Configure(ctx context.Context, req *spi.Configure
 	config := &Config{}
 	var err error
 	if err = hcl.Decode(config, req.Configuration); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "unable to decode configuration: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "unable to decode configuration: %s", err.Error())
 	}
 
 	caSessionTemplateBytes, err := ioutil.ReadFile(config.CABundleSessionTemplateFile)
@@ -233,22 +235,24 @@ func (p *SecretsManagerPlugin) generateFederatedBundlesSessionText(federatedBund
 }
 
 func (p *SecretsManagerPlugin) doPostRequest(session string) (*http.Response, error) {
-	// Load certificates for connections with CAS API
-	// TODO(silvamatteus): check the CA certificate for CAS
-	// caCert, err := ioutil.ReadFile("cas_ca.crt")
-	// if err != nil {
-	//      log.Fatal(err)
-	// }
-	// caCertPool := x509.NewCertPool()
-	// caCertPool.AppendCertsFromPEM(caCerts)
+	// Load trust anchor certificate for connections with CAS
+	// It will ensure that the plugin is talking with an attested CAS instance
+	trustAnchorCert, err := ioutil.ReadFile(p.config.CASTrustAnchorCertificate)
+	if err != nil {
+		p.log.Error("cannot read CAS trust anchor certificate")
+	}
+	caCertPool := x509.NewCertPool()
+	ok := caCertPool.AppendCertsFromPEM(trustAnchorCert)
+	if !ok {
+		return &http.Response{}, errors.New("cannot append append trust anchor certificate to CA pool")
+	}
 	cert, err := tls.LoadX509KeyPair(p.config.ClientCertDir, p.config.ClientKeyDir)
 	if err == nil {
 		client := &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					RootCAs:            nil,
-					Certificates:       []tls.Certificate{cert},
-					InsecureSkipVerify: true,
+					RootCAs:      caCertPool,
+					Certificates: []tls.Certificate{cert},
 				},
 			},
 		}
@@ -276,7 +280,7 @@ func (p *SecretsManagerPlugin) postSessionIntoCAS(session string, sessionName st
 			p.log.Warn("Predecessor is not needed for session=" + sessionName + ". Clening up predecessor file")
 			err := os.Remove(p.config.PredecessorDir + "/" + sessionName)
 			if err != nil {
-				p.log.Error("Unable to delete predecessor file for session", sessionName, err)
+				p.log.Error("Unable to delete predecessor file for session", sessionName, err.Error())
 			}
 			return errors.New("predecess is not needed")
 		}
@@ -309,7 +313,7 @@ func (p *SecretsManagerPlugin) postSvidAndKeyIntoCAS(svid string, privateKey str
 		session := p.generateSVIDSessionText(sconeWorkloadInfo, svid, privateKey)
 		err := p.postSessionIntoCAS(session, sessionNameSVIDPrefix+sconeWorkloadInfo.CasSessionName)
 		if err != nil {
-			p.log.Error("cannot post SVID and its key into CAS ", err)
+			p.log.Error("cannot post SVID and its key into CAS ", err.Error())
 		}
 		return err
 	})
@@ -327,7 +331,7 @@ func (p *SecretsManagerPlugin) postCABundleIntoCAS(ca string) error {
 		session := p.generateCASessionText(ca)
 		err := p.postSessionIntoCAS(session, sessionNameCA)
 		if err != nil {
-			p.log.Error("cannot post spire CA into CAS ", err)
+			p.log.Error("cannot post spire CA into CAS ", err.Error())
 		}
 		return err
 	})
@@ -345,7 +349,7 @@ func (p *SecretsManagerPlugin) postFederatedBundlesIntoCAS(federatedBundles stri
 		session := p.generateFederatedBundlesSessionText(federatedBundles)
 		err := p.postSessionIntoCAS(session, sessionNameCA)
 		if err != nil {
-			p.log.Error("cannot post federated bundles into CAS ", err)
+			p.log.Error("cannot post federated bundles into CAS ", err.Error())
 		}
 		return err
 	})
@@ -457,7 +461,7 @@ func (p *SecretsManagerPlugin) writePredecessor(sessionName string, predecessor 
 	}
 	err := ioutil.WriteFile(p.config.PredecessorDir+"/"+sessionName, []byte(predecessor), 0644)
 	if err != nil {
-		p.log.Error("cannot write predecessor for session", err)
+		p.log.Error("cannot write predecessor for session. ", err.Error())
 	}
 	return err
 }
@@ -465,7 +469,7 @@ func (p *SecretsManagerPlugin) writePredecessor(sessionName string, predecessor 
 func (p *SecretsManagerPlugin) readPredecessor(sessionName string) string {
 	predecessor, err := ioutil.ReadFile(p.config.PredecessorDir + "/" + sessionName)
 	if err != nil {
-		p.log.Warn("cannot read predecessor for session", err)
+		p.log.Warn("cannot read predecessor for session ", err.Error())
 		return "~"
 	}
 	return string(predecessor)
