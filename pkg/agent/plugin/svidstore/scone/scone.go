@@ -31,8 +31,7 @@ const (
 	casSessionNameSelecType        = "cas_session_name"
 	casSessionHashSelecType        = "cas_session_hash"
 	casSessionEndpoint             = "/session"
-	noPredHashMsg                  = "No predecessor hash specified albeit session alias used already"
-	predNotNeededMsg               = "Predecessor hash specified albeit session alias unused"
+	noPredHashMsg                  = "Session already exists, please specify predecessor hash"
 	certificatePemType             = "CERTIFICATE"
 	privateKeyPemType              = "PRIVATE KEY"
 	predecessorPlaceholder         = "${predecessor}"
@@ -275,33 +274,38 @@ func (p *SecretsManagerPlugin) postSessionIntoCAS(session string, sessionName st
 		if err != nil {
 			return err
 		}
+
 		bodyStr := string(body)
-		if strings.Contains(bodyStr, predNotNeededMsg) {
-			p.log.Warn("Predecessor is not needed for session=" + sessionName + ". Clening up predecessor file")
+
+		if resp.StatusCode == http.StatusNotFound {
+			p.log.Warn("Predecessor may be not needed for session="+sessionName+". Cleaning up predecessor file to try again.",
+				"The Store SVID plugin may not recover from this failure")
 			err := os.Remove(p.config.PredecessorDir + "/" + sessionName)
 			if err != nil {
-				p.log.Error("Unable to delete predecessor file for session", sessionName, err.Error())
+				p.log.Error("unable to delete predecessor file for session", sessionName, err.Error())
 			}
-			return errors.New("predecess is not needed")
+			return errors.New("error=" + bodyStr)
 		}
 		if strings.Contains(bodyStr, noPredHashMsg) {
-			return errors.New("unknown predecessor hash needed for the session=" + sessionName + "Reconfigure your CAS")
+			return errors.New("unknown predecessor hash needed for the session=" + sessionName + " Reconfigure your CAS")
 		}
 
-	} else {
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(body, &casResponse)
-		if err != nil {
-			p.log.Error("cannot decode JSON response from CAS")
-			return err
-		}
-		p.writePredecessor(sessionName, casResponse.Hash)
-		p.log.Info("Saving predecessor hash=" + casResponse.Hash +
-			" session_name=" + sessionName + " dir=" + p.config.PredecessorDir)
+		return errors.New("error=" + bodyStr)
 	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(body, &casResponse)
+	if err != nil {
+		p.log.Error("cannot decode JSON response from CAS")
+		return err
+	}
+	p.writePredecessor(sessionName, casResponse.Hash)
+	p.log.Info("Saving predecessor hash=" + casResponse.Hash +
+		" session_name=" + sessionName + " dir=" + p.config.PredecessorDir)
+
 	defer resp.Body.Close()
 	return nil
 }

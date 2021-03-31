@@ -120,4 +120,4 @@ secrets:
 
 # Supported SCONE Versions
 
-- SCONE 5.1.0
+- SCONE 5.2.0
