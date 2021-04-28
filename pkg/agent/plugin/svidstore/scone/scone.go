@@ -34,12 +34,13 @@ const (
 	noPredHashMsg                  = "Session already exists, please specify predecessor hash"
 	certificatePemType             = "CERTIFICATE"
 	privateKeyPemType              = "PRIVATE KEY"
-	predecessorPlaceholder         = "${predecessor}"
-	svidPlaceholder                = "${svid}"
-	svidKeyPlaceholder             = "${svid-key}"
-	sessionNameSelectorPlaceholder = "${session-name-selector}"
-	sessionHashSelectorPlaceholder = "${session-hash-selector}"
-	caTrustBundlePlaceholder       = "${trust-bundle-ca}"
+	predecessorPlaceholder         = "<\\predecessor>"
+	svidPlaceholder                = "<\\svid>"
+	svidKeyPlaceholder             = "<\\svid-key>"
+	sessionNameSelectorPlaceholder = "<\\session-name-selector>"
+	sessionHashSelectorPlaceholder = "<\\session-hash-selector>"
+	caTrustBundlePlaceholder       = "<\\trust-bundle-ca>"
+	intermediateCAsPlaceholder     = "<\\intermediate-svid-cas>"
 	nameYAMLKey                    = "name:"
 	attestCASEndpointV1            = "/v1/attest"
 )
@@ -102,6 +103,7 @@ func (p *SecretsManagerPlugin) SetLogger(log hclog.Logger) {
 
 // Configure configures the SecretsMangerPlugin.
 func (p *SecretsManagerPlugin) Configure(ctx context.Context, req *spi.ConfigureRequest) (*spi.ConfigureResponse, error) {
+	p.mtx.Lock()
 	// Parse HCL config payload into config struct
 	config := &Config{}
 	var err error
@@ -142,7 +144,11 @@ func (p *SecretsManagerPlugin) Configure(ctx context.Context, req *spi.Configure
 		return &spi.ConfigureResponse{}, err
 	}
 
-	p.mtx.Lock()
+	err = os.MkdirAll(config.PredecessorDir, 0744)
+	if err != nil {
+		p.log.Error("cannot create predecessors directory. ", err.Error())
+		return &spi.ConfigureResponse{}, err
+	}
 	defer p.mtx.Unlock()
 
 	p.config = config
@@ -204,11 +210,12 @@ func (p *SecretsManagerPlugin) extractWorkloadInfoFromSelectors(selectors []*com
 }
 
 // generateSVIDSessionText is an auxiliar func to gerenate the SCONE CAS session expected text format
-func (p *SecretsManagerPlugin) generateSVIDSessionText(sconeWorkloadInfo *sconeWorkloadInfo, svid string, privateKey string) string {
+func (p *SecretsManagerPlugin) generateSVIDSessionText(sconeWorkloadInfo *sconeWorkloadInfo, svid string, privateKey string, intermediateCAs string) string {
 	session := strings.ReplaceAll(svidSessionTemplate, predecessorPlaceholder,
 		p.readPredecessor(sessionNameSVIDPrefix+sconeWorkloadInfo.CasSessionName))
 	session = strings.ReplaceAll(session, svidPlaceholder, pemToSconeInjectionFile(svid))
 	session = strings.ReplaceAll(session, svidKeyPlaceholder, pemToSconeInjectionFile(privateKey))
+	session = strings.ReplaceAll(session, intermediateCAsPlaceholder, pemToSconeInjectionFile(intermediateCAs))
 	session = strings.ReplaceAll(session, sessionNameSelectorPlaceholder, sconeWorkloadInfo.CasSessionName)
 	session = strings.ReplaceAll(session, sessionHashSelectorPlaceholder, sconeWorkloadInfo.CasSessionHash)
 
@@ -250,8 +257,9 @@ func (p *SecretsManagerPlugin) doPostRequest(session string) (*http.Response, er
 		client := &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					RootCAs:      caCertPool,
-					Certificates: []tls.Certificate{cert},
+					// RootCAs:      caCertPool,
+					InsecureSkipVerify: true,
+					Certificates:       []tls.Certificate{cert},
 				},
 			},
 		}
@@ -310,11 +318,11 @@ func (p *SecretsManagerPlugin) postSessionIntoCAS(session string, sessionName st
 	return nil
 }
 
-func (p *SecretsManagerPlugin) postSvidAndKeyIntoCAS(svid string, privateKey string, sconeWorkloadInfo *sconeWorkloadInfo) error {
+func (p *SecretsManagerPlugin) postSvidAndKeyIntoCAS(svid string, privateKey string, intermediateCAs string, sconeWorkloadInfo *sconeWorkloadInfo) error {
 	retrier := retry.NewRetrier(5, time.Second, 5*time.Second)
 
 	err := retrier.Run(func() error {
-		session := p.generateSVIDSessionText(sconeWorkloadInfo, svid, privateKey)
+		session := p.generateSVIDSessionText(sconeWorkloadInfo, svid, privateKey, intermediateCAs)
 		err := p.postSessionIntoCAS(session, sessionNameSVIDPrefix+sconeWorkloadInfo.CasSessionName)
 		if err != nil {
 			p.log.Error("cannot post SVID and its key into CAS ", err.Error())
@@ -377,11 +385,22 @@ func (p *SecretsManagerPlugin) PutX509SVID(ctx context.Context, req *svidstore.P
 		return &svidstore.PutX509SVIDResponse{}, err
 	}
 
-	// Parse only the first item of the certificate list (last SVID issued)
+	// Get the SVID
 	bufPemCert := pem.EncodeToMemory(&pem.Block{Type: certificatePemType, Bytes: certificateList[0].Raw})
 	if bufPemCert == nil {
 
 		return &svidstore.PutX509SVIDResponse{}, errors.New("cannot encode SVID to PEM")
+	}
+
+	// Get the chain
+	var bufPemCertChain string
+	for i := 1; i < len(certificateList); i++ {
+		bufPem := pem.EncodeToMemory(&pem.Block{Type: certificatePemType, Bytes: certificateList[i].Raw})
+		if bufPem == nil {
+
+			return &svidstore.PutX509SVIDResponse{}, errors.New("cannot encode SVID chain to PEM")
+		}
+		bufPemCertChain += string(bufPem)
 	}
 
 	encodedPrivateKey := pem.EncodeToMemory(&pem.Block{Type: privateKeyPemType, Bytes: req.GetSvid().GetX509SvidKey()})
@@ -389,7 +408,7 @@ func (p *SecretsManagerPlugin) PutX509SVID(ctx context.Context, req *svidstore.P
 		return &svidstore.PutX509SVIDResponse{}, errors.New("cannot encode SVID key to pem format")
 	}
 
-	err = p.postSvidAndKeyIntoCAS(string(bufPemCert), string(encodedPrivateKey), sconeWorkloadInfo)
+	err = p.postSvidAndKeyIntoCAS(string(bufPemCert), string(encodedPrivateKey), bufPemCertChain, sconeWorkloadInfo)
 	if err != nil {
 		return &svidstore.PutX509SVIDResponse{}, err
 	}
@@ -460,8 +479,15 @@ func pemToSconeInjectionFile(svid string) string {
 }
 
 func (p *SecretsManagerPlugin) writePredecessor(sessionName string, predecessor string) error {
-	if _, err := os.Stat(p.config.PredecessorDir); os.IsNotExist(err) {
-		os.Mkdir(p.config.PredecessorDir, 0744)
+	lastSessionSep := strings.LastIndex(sessionName, "/")
+	if lastSessionSep != -1 {
+		if _, err := os.Stat(p.config.PredecessorDir + "/" + sessionName[:lastSessionSep]); os.IsNotExist(err) {
+			err := os.MkdirAll(p.config.PredecessorDir+"/"+sessionName[:lastSessionSep], 0744)
+			if err != nil {
+				p.log.Error("cannot create directory. ", err.Error())
+				return err
+			}
+		}
 	}
 	err := ioutil.WriteFile(p.config.PredecessorDir+"/"+sessionName, []byte(predecessor), 0644)
 	if err != nil {

@@ -23,11 +23,25 @@ func ReadBundle(bundleCachePath string) ([]*x509.Certificate, error) {
 		return nil, fmt.Errorf("error reading bundle at %s: %s", bundleCachePath, err)
 	}
 
+	fmt.Printf("read bundle.der [at %s] data:\n%x\n", bundleCachePath, data)
+
 	bundle, err := x509.ParseCertificates(data)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing bundle at %s: %s", bundleCachePath, err)
 	}
 	return bundle, nil
+}
+
+func printCertInDisk(bundleCachePath string) {
+	if _, err := os.Stat(bundleCachePath); os.IsNotExist(err) {
+		fmt.Println("File  " + bundleCachePath + " not exist")
+	}
+	data, err := ioutil.ReadFile(bundleCachePath)
+	if err != nil {
+		fmt.Printf("error reading bundle at %s: %s", bundleCachePath, err)
+	}
+
+	fmt.Printf("read after write bundle.der [at %s] data:\n%x\n", bundleCachePath, data)
 }
 
 // StoreBundle writes the bundle to disk into bundleCachePath. Returns nil if all went
@@ -39,8 +53,11 @@ func StoreBundle(bundleCachePath string, bundle []*x509.Certificate) error {
 		data.Write(cert.Raw)
 	}
 
+	fmt.Printf("write bundle.der [at %s] data:\n%x\n", bundleCachePath, data)
 	// Write data to disk.
-	return diskutil.AtomicWriteFile(bundleCachePath, data.Bytes(), 0600)
+	tmpRes := diskutil.AtomicWriteFile(bundleCachePath, data.Bytes(), 0600)
+	printCertInDisk(bundleCachePath)
+	return tmpRes
 }
 
 // ReadSVID returns the SVID located at svidCachePath. Returns nil
