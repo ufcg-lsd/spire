@@ -17,10 +17,11 @@ When the SVIDs are updated, the plugin takes care of creating (or updating) sess
 
 | Configuration                           | Description |
 | ----------------------------------------| ----------- |
-| cas_address                             |  CAS HTTPS connection string |
+| cas_connection_string                   |  CAS HTTPS connection string |
 | cas_client_certificate                  |  Client certificate used to authorize the plugin |
 | cas_client_key                          |  Client certificate key |
 | trust_anchor_certificate                |  CAS identity certiticate: the plugin uses this certificate to ensure connections only with a known, attested CAS |
+| insecure_skip_verify_tls                |  Skip TLS verification in connection with the configured CAS (**do not use in production**) |
 | cas_predecessor_dir                     |  Data path where the plugin will keep predecessors of each session |
 |            *                            |  **The next configurables define templates to be used along with placeholders to mint the desired sessions (the placeholders are presented in the next section)** |
 | svid_session_template_file              |  Template file for sessions that carry the SVIDs and private keys |
@@ -32,7 +33,7 @@ A sample configuration:
 ```
   SVIDStore "sconecas_sessionmanager" {
     plugin_data {
-      cas_address = "https://cas.scone:8081"
+      cas_connection_string = "https://cas.scone:8081"
       cas_client_certificate = "/run/spire/config/cas-client.crt"
       cas_client_key = "/run/spire/config/cas-client.key"
       trust_anchor_certificate = "/run/spire/config/trust-anchor.crt"
