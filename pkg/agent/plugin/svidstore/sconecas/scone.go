@@ -25,17 +25,19 @@ import (
 )
 
 const (
-	pluginName                     = "sconecas_sessionmanager"
-	casSessionEndpoint             = "/session"
-	noPredHashMsg                  = "Session already exists, please specify predecessor hash"
-	predecessorPlaceholder         = "<\\predecessor>"
-	svidPlaceholder                = "<\\svid>"
-	svidKeyPlaceholder             = "<\\svid-key>"
-	sessionNameSelectorPlaceholder = "<\\session-name-selector>"
-	sessionHashSelectorPlaceholder = "<\\session-hash-selector>"
-	caTrustBundlePlaceholder       = "<\\trust-bundle>"
-	federatedBundlesPlaceholder    = "<\\federated-bundles>"
-	nameYAMLKey                    = "name:"
+	pluginName                             = "sconecas_sessionmanager"
+	casSessionEndpoint                     = "/session"
+	noPredHashMsg                          = "Session already exists, please specify predecessor hash"
+	predecessorPlaceholder                 = "<\\predecessor>"
+	svidPlaceholder                        = "<\\svid>"
+	svidKeyPlaceholder                     = "<\\svid-key>"
+	sessionNameSelectorPlaceholder         = "<\\session-name-selector>"
+	sessionHashSelectorPlaceholder         = "<\\session-hash-selector>"
+	caTrustBundlePlaceholder               = "<\\trust-bundle>"
+	trustBundleSessionNamePlaceholder      = "<\\trust-bundle-session-name>"
+	federatedBundlesPlaceholder            = "<\\federated-bundles>"
+	federatedBundlesSessionNamePlaceholder = "<\\fed-bundles-session-name>"
+	nameYAMLKey                            = "name:"
 )
 
 // BuiltIn returns the a new plugin instance
@@ -95,8 +97,10 @@ type SessionManagerPlugin struct {
 }
 
 type sconeWorkloadInfo struct {
-	CasSessionName string
-	CasSessionHash string
+	CasSessionName         string
+	CasSessionHash         string
+	TrustBundleSessionName string
+	FedBundlesSessionName  string
 }
 
 // SetLogger sets a new logger for SessionManagerPlugin
@@ -182,15 +186,15 @@ func (p *SessionManagerPlugin) PutX509SVID(ctx context.Context, req *svidstorev1
 		return nil, status.Errorf(codes.Unavailable, "unable to post svid into cas: %v", err)
 	}
 
-	err = p.postBundleIntoCAS(svidData.Bundle)
+	err = p.postBundleIntoCAS(svidData.Bundle, sconeWorkloadInfo)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "unable to post bundle into cas: %v", err)
 	}
 
 	if len(svidData.FederatedBundles) > 0 {
-		err = p.postFederatedBundlesIntoCAS(svidData.FederatedBundles)
+		err = p.postFederatedBundlesIntoCAS(svidData.FederatedBundles, sconeWorkloadInfo)
 	}
-	return &svidstorev1.PutX509SVIDResponse{}, nil
+	return &svidstorev1.PutX509SVIDResponse{}, err
 }
 
 // DeleteX509SVID does nothing in case of SCONE CAS once there is no delete operation for sessions
@@ -202,8 +206,8 @@ func (p *SessionManagerPlugin) postSvidIntoCAS(svidChain string, privKey string,
 	retrier := retry.NewRetrier(5, time.Second, 5*time.Second)
 
 	err := retrier.Run(func() error {
-		session := p.generateSVIDSessionText(svidChain, privKey, workloadInfo)
 		sessionName := strings.ReplaceAll(p.templateInfo.sessionSvidNameTemplate, sessionNameSelectorPlaceholder, workloadInfo.CasSessionName)
+		session := p.generateSVIDSessionText(svidChain, privKey, workloadInfo, sessionName)
 		err := p.postSessionIntoCAS(session, sessionName)
 		if err != nil {
 			p.log.Error("cannot post SVID and its key into CAS ", err.Error())
@@ -217,12 +221,13 @@ func (p *SessionManagerPlugin) postSvidIntoCAS(svidChain string, privKey string,
 	return nil
 }
 
-func (p *SessionManagerPlugin) postBundleIntoCAS(bundle string) error {
+func (p *SessionManagerPlugin) postBundleIntoCAS(bundle string, workloadInfo *sconeWorkloadInfo) error {
 	retrier := retry.NewRetrier(5, time.Second, 5*time.Second)
 
 	err := retrier.Run(func() error {
-		session := p.generateCASessionText(bundle)
-		err := p.postSessionIntoCAS(session, p.templateInfo.bundleSessionName)
+		sessionName := strings.ReplaceAll(p.templateInfo.bundleSessionName, caTrustBundlePlaceholder, workloadInfo.TrustBundleSessionName)
+		session := p.generateCASessionText(bundle, sessionName)
+		err := p.postSessionIntoCAS(session, sessionName)
 		if err != nil {
 			p.log.Error("cannot post bundle into CAS ", err.Error())
 		}
@@ -235,13 +240,14 @@ func (p *SessionManagerPlugin) postBundleIntoCAS(bundle string) error {
 	return nil
 }
 
-func (p *SessionManagerPlugin) postFederatedBundlesIntoCAS(fedBundlesMap map[string]string) error {
+func (p *SessionManagerPlugin) postFederatedBundlesIntoCAS(fedBundlesMap map[string]string, workloadInfo *sconeWorkloadInfo) error {
 	bundles := bundleMapToStr(fedBundlesMap)
 	retrier := retry.NewRetrier(5, time.Second, 5*time.Second)
 
 	err := retrier.Run(func() error {
-		session := p.generateFederatedBundlesSessionText(bundles)
-		err := p.postSessionIntoCAS(session, p.templateInfo.federatedBundlesSessionName)
+		sessionName := strings.ReplaceAll(p.templateInfo.federatedBundlesSessionName, federatedBundlesPlaceholder, workloadInfo.FedBundlesSessionName)
+		session := p.generateFederatedBundlesSessionText(bundles, sessionName)
+		err := p.postSessionIntoCAS(session, sessionName)
 		if err != nil {
 			p.log.Error("cannot post federated bundles into CAS ", err.Error())
 		}
@@ -295,9 +301,12 @@ func (p *SessionManagerPlugin) postSessionIntoCAS(session string, sessionName st
 		p.log.Error("cannot decode JSON response from CAS")
 		return err
 	}
-	p.writePredecessor(sessionName, casResponse.Hash)
 	p.log.Info("Saving predecessor hash=" + casResponse.Hash +
 		" session_name=" + sessionName + " dir=" + p.config.PredecessorDir)
+	err = p.writePredecessor(sessionName, casResponse.Hash)
+	if err != nil {
+		p.log.With("session", sessionName, "error", err).Error("cannot write predecessor for session")
+	}
 
 	defer resp.Body.Close()
 	return nil
@@ -319,6 +328,7 @@ func (p *SessionManagerPlugin) doPostRequest(session string) (*http.Response, er
 	if err == nil {
 		client := &http.Client{
 			Transport: &http.Transport{
+				// #nosec
 				TLSClientConfig: &tls.Config{
 					RootCAs:            caCertPool,
 					InsecureSkipVerify: p.config.InsecureSkipSVerifyTLS,
@@ -332,27 +342,28 @@ func (p *SessionManagerPlugin) doPostRequest(session string) (*http.Response, er
 	return &http.Response{}, err
 }
 
-func (p *SessionManagerPlugin) generateCASessionText(svidCa string) string {
+func (p *SessionManagerPlugin) generateCASessionText(svidCa string, sessionName string) string {
 	session := strings.ReplaceAll(p.templateInfo.caBundleSessionTemplate, predecessorPlaceholder,
-		p.readPredecessor(p.templateInfo.bundleSessionName))
+		p.readPredecessor(sessionName))
+	session = strings.ReplaceAll(session, trustBundleSessionNamePlaceholder, sessionName)
 	session = strings.ReplaceAll(session,
 		caTrustBundlePlaceholder,
 		pemToSconeInjectionFile(svidCa))
 	return session
 }
 
-func (p *SessionManagerPlugin) generateFederatedBundlesSessionText(federatedBundles string) string {
+func (p *SessionManagerPlugin) generateFederatedBundlesSessionText(federatedBundles string, sessionName string) string {
 	session := strings.ReplaceAll(p.templateInfo.federatedBundlesSessionTemplate, predecessorPlaceholder,
-		p.readPredecessor(p.templateInfo.federatedBundlesSessionName))
+		p.readPredecessor(sessionName))
+	session = strings.ReplaceAll(session, federatedBundlesSessionNamePlaceholder, sessionName)
 	session = strings.ReplaceAll(session,
 		federatedBundlesPlaceholder,
 		pemToSconeInjectionFile(federatedBundles))
 	return session
 }
 
-func (p *SessionManagerPlugin) generateSVIDSessionText(svidChain string, privKey string, workloadInfo *sconeWorkloadInfo) string {
-	predecessorName := strings.ReplaceAll(p.templateInfo.sessionSvidNameTemplate, sessionNameSelectorPlaceholder, workloadInfo.CasSessionName)
-	session := strings.ReplaceAll(p.templateInfo.svidSessionTemplate, predecessorPlaceholder, p.readPredecessor(predecessorName))
+func (p *SessionManagerPlugin) generateSVIDSessionText(svidChain string, privKey string, workloadInfo *sconeWorkloadInfo, sessionName string) string {
+	session := strings.ReplaceAll(p.templateInfo.svidSessionTemplate, predecessorPlaceholder, p.readPredecessor(sessionName))
 	session = strings.ReplaceAll(session, svidPlaceholder, pemToSconeInjectionFile(svidChain))
 	session = strings.ReplaceAll(session, svidKeyPlaceholder, pemToSconeInjectionFile(privKey))
 	session = strings.ReplaceAll(session, sessionNameSelectorPlaceholder, workloadInfo.CasSessionName)
@@ -378,8 +389,10 @@ func (p *SessionManagerPlugin) selectorsFromMetadata(metadata []string) (*sconeW
 	}
 
 	workloadInfo := &sconeWorkloadInfo{
-		CasSessionName: data["session_name"],
-		CasSessionHash: data["session_hash"],
+		CasSessionName:         data["session_name"],
+		CasSessionHash:         data["session_hash"],
+		TrustBundleSessionName: data["trust_bundle_session_name"],
+		FedBundlesSessionName:  data["fed_bundles_session_name"],
 	}
 
 	if workloadInfo.CasSessionHash == "" || workloadInfo.CasSessionName == "" {
@@ -399,11 +412,7 @@ func (p *SessionManagerPlugin) writePredecessor(sessionName string, predecessor 
 			}
 		}
 	}
-	err := ioutil.WriteFile(p.config.PredecessorDir+"/"+sessionName, []byte(predecessor), 0644)
-	if err != nil {
-		p.log.Error("cannot write predecessor for session. ", err.Error())
-	}
-	return err
+	return ioutil.WriteFile(p.config.PredecessorDir+"/"+sessionName, []byte(predecessor), 0600)
 }
 
 func (p *SessionManagerPlugin) readPredecessor(sessionName string) string {

@@ -53,8 +53,10 @@ The selectors of the type `sconecas_sessionmanager` are used to describe the ses
 
 | Selector                        | Example                                   | Description                                    |
 | ------------------------------- | ----------------------------------------- | ---------------------------------------------- |
-| `sconecas_sessionmanager:session_name` | `sconecas_sessionmanager:confidential-apps/mariadb-1` | Name of the session posted into SCONE CAS |
+| `sconecas_sessionmanager:session_name` | `sconecas_sessionmanager:confidential-apps/mariadb-1` | Name of the session posted into SCONE CAS that will import the SVIDs |
 | `sconecas_sessionmanager:session_hash`        | `sconecas_sessionmanager:session_hash:03aa3f5e2779b625a455651b54866447f995a2970d164581b4073044435359ed`         | HASH of the session returned by the SCONE CLI or CAS API  |
+| `sconecas_sessionmanager:trust_bundle_session_name`   | `sconecas_sessionmanager:trust_bundle_session_name:spire-ca` | Name that replaces the `<\trust-bundle-session-name>` placeholder in the `bundle_session_template_file` |
+| `sconecas_sessionmanager:fed_bundles_session_name` | `sconecas_sessionmanager:trust_bundle_session_name:fed-bundles` | Name that replaces the `<\fed-bundles-session-name>` placeholder in the `federated_bundles_session_template_file` |
 
 sconecas_sessionmanager:session_hash
 
@@ -71,13 +73,17 @@ The placeholders needed by the plugin for each session are:
 |         `svid_session_template_file`      |              *             |                                 *                                 |
 |                     *                     |          `<\svid>`         |         SVID leaf certificate and its intermediates (PEM)         |
 |                     *                     |        `<\svid-key>`       |                           SVID key (PEM)                          |
-|                     *                     | `<\session-name-selector>` | Name of the session that will import the SVID and the private key |
-|                     *                     | `<\session-hash-selector>` | HASH of the session that will import the SVID and the private key |
+|                     *                     | `<\session-name-selector>` | Value of the `session_name` selector (Name of the session that will import the SVID and the private key) |
+|                     *                     | `<\session-hash-selector>` | Value of the `session_hash` selector (HASH of the session that will import the SVID and the private key) |
 |                     *                     |      `<\predecessor>`      |                       Sessions' predecessors                      |
 |       `bundle_session_template_file`      |              *             |                                 *                                 |
+|                     *                     |      `<\trust-bundle-session-name>`     |      Value of the `trust_bundle_session_name` selector                    |
 |                     *                     |      `<\trust-bundle>`     |                     Trust bundle for the SVIDs                    |
+|                     *                     |      `<\predecessor>`      |                       Sessions' predecessors                      |
 | `federated_bundles_session_template_file` |              *             |                                 *                                 |
+|                     *                     |      `<\fed-bundles-session-name>`     |      Value of the `fed_bundles_session_name` selector                    |
 |                                           |   `<\federated-bundles>`   |            Federated bundles associated with the SVIDs            |
+|                     *                     |      `<\predecessor>`      |                       Sessions' predecessors                      |
 
 **SVID session template examples** 
 
@@ -103,7 +109,7 @@ secrets:
 **Bundle session template**
 
 ```yaml
-name: spire-ca
+name: spire-ca-<\trust-bundle-session-name>
 version: "0.3"
 predecessor: <\predecessor>
 secrets:
@@ -117,7 +123,7 @@ secrets:
 **Federated bundles session template**
 
 ```yaml
-name: spire-federated-bundles
+name: spire-fed-bundles-<\fed-bundles-session-name>
 version: "0.3"
 predecessor: <\predecessor>
 secrets:
