@@ -59,14 +59,15 @@ func New() *SessionManagerPlugin {
 
 // Config holds the plugin configuration
 type Config struct {
-	CasAddress                          string `hcl:"cas_address"`
+	CasConnectionStr                    string `hcl:"cas_connection_string"`
 	ClientCertDir                       string `hcl:"cas_client_certificate"`
 	ClientKeyDir                        string `hcl:"cas_client_key"`
 	PredecessorDir                      string `hcl:"cas_predecessor_dir"`
 	SVIDSessionTemplateFile             string `hcl:"svid_session_template_file"`
 	CABundleSessionTemplateFile         string `hcl:"bundle_session_template_file"`
 	FederatedBundlesSessionTemplateFile string `hcl:"federated_bundles_session_template_file"`
-	CASTrustAnchorCertificate           string `hcl:"trust_anchor_certificate"`
+	CasTrustAnchorCertificate           string `hcl:"trust_anchor_certificate"`
+	InsecureSkipSVerifyTLS              bool   `hcl:"insecure_skip_verify_tls"`
 }
 
 type templateInfo struct {
@@ -156,6 +157,10 @@ func (p *SessionManagerPlugin) Configure(ctx context.Context, req *configv1.Conf
 		return nil, status.Errorf(codes.Internal, "cannot create predecessors directory: %v", err)
 	}
 
+	if config.InsecureSkipSVerifyTLS {
+		p.log.Warn("insecure_skip_verify_tls enabled. The plugin " +
+			pluginName + " will trust any CAS. Do not use this config in production!")
+	}
 	p.config = config
 	return &configv1.ConfigureResponse{}, nil
 }
@@ -301,7 +306,7 @@ func (p *SessionManagerPlugin) postSessionIntoCAS(session string, sessionName st
 func (p *SessionManagerPlugin) doPostRequest(session string) (*http.Response, error) {
 	// Load trust anchor certificate for connections with CAS
 	// It will ensure that the plugin is talking with an attested CAS instance
-	trustAnchorCert, err := ioutil.ReadFile(p.config.CASTrustAnchorCertificate)
+	trustAnchorCert, err := ioutil.ReadFile(p.config.CasTrustAnchorCertificate)
 	if err != nil {
 		p.log.Error("cannot read CAS trust anchor certificate")
 	}
@@ -316,13 +321,13 @@ func (p *SessionManagerPlugin) doPostRequest(session string) (*http.Response, er
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					RootCAs:            caCertPool,
-					InsecureSkipVerify: true,
+					InsecureSkipVerify: p.config.InsecureSkipSVerifyTLS,
 					Certificates:       []tls.Certificate{cert},
 				},
 			},
 		}
 
-		return client.Post(p.config.CasAddress+casSessionEndpoint, "application/text", strings.NewReader(session))
+		return client.Post(p.config.CasConnectionStr+casSessionEndpoint, "application/text", strings.NewReader(session))
 	}
 	return &http.Response{}, err
 }
