@@ -1,6 +1,6 @@
 # Agent plugin: SVIDStore "sconecas_sessionmanager"
 
-The `sconecas_sessionmanager` plugin stores in [SCONE CAS](https://sconedocs.github.io/CASOverview/) the resulting X509-SVIDs of the entries that the agent is entitled to. It is necessary to have an entry with the `-svidStore` flag set.
+The `sconecas_sessionmanager` plugin stores in [SCONE CAS](https://sconedocs.github.io/CASOverview/) the resulting X509-SVIDs of the entries that the agent is entitled to. It is necessary to have an entry with the `-storeSVID` flag set.
 
 The plugin uses session templates to give users more flexibility. Each template has placeholders used by the plugin to inject information and constraints for access control in the secret store.
 
@@ -37,6 +37,7 @@ A sample configuration:
       cas_client_certificate = "/run/spire/config/cas-client.crt"
       cas_client_key = "/run/spire/config/cas-client.key"
       trust_anchor_certificate = "/run/spire/config/trust-anchor.crt"
+      insecure_skip_verify_tls = false
 
       cas_predecessor_dir = "/run/spire"
       svid_session_template_file = "/run/spire/config/svid.template"
@@ -53,7 +54,7 @@ The selectors of the type `sconecas_sessionmanager` are used to describe the ses
 
 | Selector                        | Example                                   | Description                                    |
 | ------------------------------- | ----------------------------------------- | ---------------------------------------------- |
-| `sconecas_sessionmanager:session_name` | `sconecas_sessionmanager:confidential-apps/mariadb-1` | Name of the session posted into SCONE CAS that will import the SVIDs |
+| `sconecas_sessionmanager:session_name` | `sconecas_sessionmanager:session_name:confidential-apps/mariadb-1` | Name of the session posted into SCONE CAS that will import the SVIDs |
 | `sconecas_sessionmanager:session_hash`        | `sconecas_sessionmanager:session_hash:03aa3f5e2779b625a455651b54866447f995a2970d164581b4073044435359ed`         | HASH of the session returned by the SCONE CLI or CAS API  |
 | `sconecas_sessionmanager:trust_bundle_session_name`   | `sconecas_sessionmanager:trust_bundle_session_name:spire-ca` | Name that replaces the `<\trust-bundle-session-name>` placeholder in the `bundle_session_template_file` |
 | `sconecas_sessionmanager:fed_bundles_session_name` | `sconecas_sessionmanager:trust_bundle_session_name:fed-bundles` | Name that replaces the `<\fed-bundles-session-name>` placeholder in the `federated_bundles_session_template_file` |
@@ -102,6 +103,8 @@ secrets:
     private_key: svid_key
   - name: svid_key
     kind: private-key
+    value: |
+       <\svid-key>
     export:
         session: <\session-name-selector>
 ```
