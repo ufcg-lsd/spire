@@ -225,8 +225,7 @@ func (p *SessionManagerPlugin) postBundleIntoCAS(bundle string, workloadInfo *sc
 	retrier := retry.NewRetrier(5, time.Second, 5*time.Second)
 
 	err := retrier.Run(func() error {
-		sessionName := strings.ReplaceAll(p.templateInfo.bundleSessionName, caTrustBundlePlaceholder, workloadInfo.TrustBundleSessionName)
-		session := p.generateCASessionText(bundle, sessionName)
+		session, sessionName := p.generateCASessionText(bundle, workloadInfo)
 		err := p.postSessionIntoCAS(session, sessionName)
 		if err != nil {
 			p.log.Error("cannot post bundle into CAS ", err.Error())
@@ -245,8 +244,7 @@ func (p *SessionManagerPlugin) postFederatedBundlesIntoCAS(fedBundlesMap map[str
 	retrier := retry.NewRetrier(5, time.Second, 5*time.Second)
 
 	err := retrier.Run(func() error {
-		sessionName := strings.ReplaceAll(p.templateInfo.federatedBundlesSessionName, federatedBundlesPlaceholder, workloadInfo.FedBundlesSessionName)
-		session := p.generateFederatedBundlesSessionText(bundles, sessionName)
+		session, sessionName := p.generateFederatedBundlesSessionText(bundles, workloadInfo)
 		err := p.postSessionIntoCAS(session, sessionName)
 		if err != nil {
 			p.log.Error("cannot post federated bundles into CAS ", err.Error())
@@ -342,24 +340,31 @@ func (p *SessionManagerPlugin) doPostRequest(session string) (*http.Response, er
 	return &http.Response{}, err
 }
 
-func (p *SessionManagerPlugin) generateCASessionText(svidCa string, sessionName string) string {
-	session := strings.ReplaceAll(p.templateInfo.caBundleSessionTemplate, predecessorPlaceholder,
-		p.readPredecessor(sessionName))
-	session = strings.ReplaceAll(session, trustBundleSessionNamePlaceholder, sessionName)
+func (p *SessionManagerPlugin) generateCASessionText(svidCa string, workloadInfo *sconeWorkloadInfo) (string, string) {
+	fullSessionName := strings.ReplaceAll(p.templateInfo.bundleSessionName,
+		trustBundleSessionNamePlaceholder, workloadInfo.TrustBundleSessionName)
+	session := strings.ReplaceAll(p.templateInfo.caBundleSessionTemplate,
+		predecessorPlaceholder,
+		p.readPredecessor(fullSessionName))
+	session = strings.ReplaceAll(session, trustBundleSessionNamePlaceholder,
+		workloadInfo.TrustBundleSessionName)
 	session = strings.ReplaceAll(session,
 		caTrustBundlePlaceholder,
 		pemToSconeInjectionFile(svidCa))
-	return session
+	return session, fullSessionName
 }
 
-func (p *SessionManagerPlugin) generateFederatedBundlesSessionText(federatedBundles string, sessionName string) string {
+func (p *SessionManagerPlugin) generateFederatedBundlesSessionText(federatedBundles string, workloadInfo *sconeWorkloadInfo) (string, string) {
+	fullSessionName := strings.ReplaceAll(p.templateInfo.federatedBundlesSessionName,
+		federatedBundlesSessionNamePlaceholder, workloadInfo.FedBundlesSessionName)
 	session := strings.ReplaceAll(p.templateInfo.federatedBundlesSessionTemplate, predecessorPlaceholder,
-		p.readPredecessor(sessionName))
-	session = strings.ReplaceAll(session, federatedBundlesSessionNamePlaceholder, sessionName)
+		p.readPredecessor(fullSessionName))
+	session = strings.ReplaceAll(session, federatedBundlesSessionNamePlaceholder,
+		workloadInfo.FedBundlesSessionName)
 	session = strings.ReplaceAll(session,
 		federatedBundlesPlaceholder,
 		pemToSconeInjectionFile(federatedBundles))
-	return session
+	return session, fullSessionName
 }
 
 func (p *SessionManagerPlugin) generateSVIDSessionText(svidChain string, privKey string, workloadInfo *sconeWorkloadInfo, sessionName string) string {
