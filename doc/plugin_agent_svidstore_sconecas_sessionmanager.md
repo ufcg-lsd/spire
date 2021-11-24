@@ -57,7 +57,7 @@ The selectors of the type `sconecas_sessionmanager` are used to describe the ses
 | `sconecas_sessionmanager:session_name` | `sconecas_sessionmanager:session_name:confidential-apps/mariadb-1` | Name of the session posted into SCONE CAS that will import the SVIDs |
 | `sconecas_sessionmanager:session_hash`        | `sconecas_sessionmanager:session_hash:03aa3f5e2779b625a455651b54866447f995a2970d164581b4073044435359ed`         | HASH of the session returned by the SCONE CLI or CAS API  |
 | `sconecas_sessionmanager:trust_bundle_session_name`   | `sconecas_sessionmanager:trust_bundle_session_name:spire-ca` | Name that replaces the `<\trust-bundle-session-name>` placeholder in the `bundle_session_template_file` |
-| `sconecas_sessionmanager:fed_bundles_session_name` | `sconecas_sessionmanager:trust_bundle_session_name:fed-bundles` | Name that replaces the `<\fed-bundles-session-name>` placeholder in the `federated_bundles_session_template_file` |
+| `sconecas_sessionmanager:fed_bundles_session_name` | `sconecas_sessionmanager:fed_bundles_session_name:fed-bundles` | Name that replaces the `<\fed-bundles-session-name>` placeholder in the `federated_bundles_session_template_file` |
 
 sconecas_sessionmanager:session_hash
 
@@ -72,7 +72,8 @@ The placeholders needed by the plugin for each session are:
 |             Template file type            |         Placeholder        |                           Replaced with                           |
 |:-----------------------------------------:|:--------------------------:|:-----------------------------------------------------------------:|
 |         `svid_session_template_file`      |              *             |                                 *                                 |
-|                     *                     |          `<\svid>`         |         SVID leaf certificate and its intermediates (PEM)         |
+|                     *                     |          `<\svid>`         |         SVID leaf certificate (PEM)         |
+|                     *                     |          `<\svid-intermediates>`         |         SVID intermediate certificates (PEM)         |
 |                     *                     |        `<\svid-key>`       |                           SVID key (PEM)                          |
 |                     *                     | `<\session-name-selector>` | Value of the `session_name` selector (Name of the session that will import the SVID and the private key) |
 |                     *                     | `<\session-hash-selector>` | Value of the `session_hash` selector (HASH of the session that will import the SVID and the private key) |
@@ -97,16 +98,25 @@ secrets:
     kind: x509
     value: |
         <\svid>
+    issuer: svid-intermediates
     export:
         session: <\session-name-selector>
         session_hash: <\session-hash-selector>
     private_key: svid_key
+  - name: svid-intermediates
+    kind: x509-ca
+    value: |
+        <\svid-intermediates>
+    export:
+        session: <\session-name-selector>
+        session_hash: <\session-hash-selector>
   - name: svid_key
     kind: private-key
     value: |
-       <\svid-key>
+        <\svid-key>
     export:
         session: <\session-name-selector>
+        session_hash: <\session-hash-selector>
 ```
 
 **Bundle session template**
