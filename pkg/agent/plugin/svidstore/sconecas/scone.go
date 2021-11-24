@@ -30,6 +30,7 @@ const (
 	noPredHashMsg                          = "Session already exists, please specify predecessor hash"
 	predecessorPlaceholder                 = "<\\predecessor>"
 	svidPlaceholder                        = "<\\svid>"
+	svidIntermediatesPlaceholder           = "<\\svid-intermediates>"
 	svidKeyPlaceholder                     = "<\\svid-key>"
 	sessionNameSelectorPlaceholder         = "<\\session-name-selector>"
 	sessionHashSelectorPlaceholder         = "<\\session-hash-selector>"
@@ -38,6 +39,7 @@ const (
 	federatedBundlesPlaceholder            = "<\\federated-bundles>"
 	federatedBundlesSessionNamePlaceholder = "<\\fed-bundles-session-name>"
 	nameYAMLKey                            = "name:"
+	endCertificateStr                      = "-----END CERTIFICATE-----\n"
 )
 
 // BuiltIn returns the a new plugin instance
@@ -368,8 +370,13 @@ func (p *SessionManagerPlugin) generateFederatedBundlesSessionText(federatedBund
 }
 
 func (p *SessionManagerPlugin) generateSVIDSessionText(svidChain string, privKey string, workloadInfo *sconeWorkloadInfo, sessionName string) string {
+	svidChainSplitted := strings.SplitN(svidChain, endCertificateStr, 2)
+	svid := svidChainSplitted[0] + endCertificateStr
+	intermediates := svidChainSplitted[1]
+
 	session := strings.ReplaceAll(p.templateInfo.svidSessionTemplate, predecessorPlaceholder, p.readPredecessor(sessionName))
-	session = strings.ReplaceAll(session, svidPlaceholder, pemToSconeInjectionFile(svidChain))
+	session = strings.ReplaceAll(session, svidPlaceholder, pemToSconeInjectionFile(svid))
+	session = strings.ReplaceAll(session, svidIntermediatesPlaceholder, pemToSconeInjectionFile(intermediates))
 	session = strings.ReplaceAll(session, svidKeyPlaceholder, pemToSconeInjectionFile(privKey))
 	session = strings.ReplaceAll(session, sessionNameSelectorPlaceholder, workloadInfo.CasSessionName)
 	session = strings.ReplaceAll(session, sessionHashSelectorPlaceholder, workloadInfo.CasSessionHash)
