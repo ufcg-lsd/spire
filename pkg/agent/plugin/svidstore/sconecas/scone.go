@@ -266,6 +266,7 @@ func (p *SessionManagerPlugin) postSessionIntoCAS(session string, sessionName st
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	casResponse := casResponseType{}
 	if resp.StatusCode != http.StatusCreated {
 		p.log.Error("cannot post SVID into CAS. Response status code =", resp.Status)
@@ -308,7 +309,6 @@ func (p *SessionManagerPlugin) postSessionIntoCAS(session string, sessionName st
 		p.log.With("session", sessionName, "error", err).Error("cannot write predecessor for session")
 	}
 
-	defer resp.Body.Close()
 	return nil
 }
 
