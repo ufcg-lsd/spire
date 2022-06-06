@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -266,7 +267,16 @@ func (p *SessionManagerPlugin) postSessionIntoCAS(session string, sessionName st
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		fmt.Printf("defer called to close the body of \n%v\n", resp)
+		err := resp.Body.Close()
+		if err != nil {
+			fmt.Printf("unable to close body of \n%v\n", resp)
+			panic(err)
+		}
+	}()
+
 	casResponse := casResponseType{}
 	if resp.StatusCode != http.StatusCreated {
 		p.log.Error("cannot post SVID into CAS. Response status code =", resp.Status)
