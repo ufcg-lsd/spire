@@ -96,6 +96,7 @@ type SessionManagerPlugin struct {
 	mtx          sync.RWMutex
 	config       *Config
 	templateInfo *templateInfo
+	client       *http.Client
 }
 
 type sconeWorkloadInfo struct {
@@ -168,6 +169,32 @@ func (p *SessionManagerPlugin) Configure(ctx context.Context, req *configv1.Conf
 			pluginName + " will trust any CAS. Do not use this config in production!")
 	}
 	p.config = config
+
+	// Load trust anchor certificate for connections with CAS
+	// It will ensure that the plugin is talking with an attested CAS instance
+	trustAnchorCert, err := ioutil.ReadFile(p.config.CasTrustAnchorCertificate)
+	if err != nil {
+		p.log.Error("cannot read CAS trust anchor certificate")
+	}
+	caCertPool := x509.NewCertPool()
+	ok := caCertPool.AppendCertsFromPEM(trustAnchorCert)
+	if !ok {
+		return &configv1.ConfigureResponse{}, errors.New("cannot append append trust anchor certificate to CA pool")
+	}
+	cert, err := tls.LoadX509KeyPair(p.config.ClientCertDir, p.config.ClientKeyDir)
+	if err != nil {
+		return &configv1.ConfigureResponse{}, err
+	}
+	p.client = &http.Client{
+		Transport: &http.Transport{
+			// #nosec
+			TLSClientConfig: &tls.Config{
+				RootCAs:            caCertPool,
+				InsecureSkipVerify: p.config.InsecureSkipSVerifyTLS,
+				Certificates:       []tls.Certificate{cert},
+			},
+		},
+	}
 	return &configv1.ConfigureResponse{}, nil
 }
 
@@ -313,33 +340,8 @@ func (p *SessionManagerPlugin) postSessionIntoCAS(session string, sessionName st
 }
 
 func (p *SessionManagerPlugin) doPostRequest(session string) (*http.Response, error) {
-	// Load trust anchor certificate for connections with CAS
-	// It will ensure that the plugin is talking with an attested CAS instance
-	trustAnchorCert, err := ioutil.ReadFile(p.config.CasTrustAnchorCertificate)
-	if err != nil {
-		p.log.Error("cannot read CAS trust anchor certificate")
-	}
-	caCertPool := x509.NewCertPool()
-	ok := caCertPool.AppendCertsFromPEM(trustAnchorCert)
-	if !ok {
-		return &http.Response{}, errors.New("cannot append append trust anchor certificate to CA pool")
-	}
-	cert, err := tls.LoadX509KeyPair(p.config.ClientCertDir, p.config.ClientKeyDir)
-	if err == nil {
-		client := &http.Client{
-			Transport: &http.Transport{
-				// #nosec
-				TLSClientConfig: &tls.Config{
-					RootCAs:            caCertPool,
-					InsecureSkipVerify: p.config.InsecureSkipSVerifyTLS,
-					Certificates:       []tls.Certificate{cert},
-				},
-			},
-		}
-
-		return client.Post(p.config.CasConnectionStr+casSessionEndpoint, "application/text", strings.NewReader(session))
-	}
-	return &http.Response{}, err
+	p.client.CloseIdleConnections()
+	return p.client.Post(p.config.CasConnectionStr+casSessionEndpoint, "application/text", strings.NewReader(session))
 }
 
 func (p *SessionManagerPlugin) generateCASessionText(svidCa string, workloadInfo *sconeWorkloadInfo) (string, string) {
